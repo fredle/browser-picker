@@ -4,10 +4,12 @@
 //! is resolved and the browser launched without ever creating a window; only an
 //! unmatched URL costs a GUI.
 //!
-//!   browser_picker.exe <URL>     pick a profile for this link
-//!   browser_picker.exe --manage  rules manager and setup (also with no args)
-//!   browser_picker.exe --install register with Windows, add Start Menu entry
+//!   browser_picker.exe <URL>       pick a profile for this link
+//!   browser_picker.exe --manage    rules manager and setup (also with no args)
+//!   browser_picker.exe --install   register with Windows, add Start Menu entry
 //!   browser_picker.exe --uninstall
+//!   browser_picker.exe --register    silent equivalent of --install, for installers
+//!   browser_picker.exe --unregister  silent equivalent of --uninstall, for installers
 
 #![windows_subsystem = "windows"]
 
@@ -98,6 +100,7 @@ action: show picker
             let _ = std::io::stdout().write_all(out.as_bytes());
         }
         Some("--register") => std::process::exit(install::run_register_quiet()),
+        Some("--unregister") => std::process::exit(install::run_unregister_quiet()),
         Some("--install") => install::run_install(),
         Some("--uninstall") => install::run_uninstall(),
         None | Some("--manage") | Some("-m") => {

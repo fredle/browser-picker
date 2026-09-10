@@ -163,6 +163,18 @@ pub fn run_install() {
     crate::default_browser::open_default_apps_settings();
 }
 
+/// Silent unregistration for unattended use (uninstallers, scripting): no
+/// dialog, no Settings page. Exit code reports success.
+pub fn run_unregister_quiet() -> i32 {
+    match unregister() {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("unregister failed: {e}");
+            1
+        }
+    }
+}
+
 pub fn run_uninstall() {
     let _ = unregister();
     message(

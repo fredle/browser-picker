@@ -1,46 +1,26 @@
-# Browser Picker (Rust)
+# Browser Picker
 
 Click a link, choose which Chrome or Edge profile opens it. Save a rule and that
 site skips the picker from then on.
 
-A **single 4.9 MB exe with no runtime dependency** — no Python, no .NET, no
-background process.
-
-This replaced an earlier Python/tkinter implementation, which was removed once
-this version took over as the registered handler. It is still in git history at
-the `Import Python implementation and Rust port` commit if it is ever needed.
-
-## Why it was rewritten
-
-The Python build needed 4.4 seconds to show a window, which is why it shipped
-three executables: a launcher, a resident daemon holding tkinter warm, and the
-picker itself, talking to each other over TCP port 27384. This build reaches a
-visible window in ~250 ms, so all of that machinery is gone:
-
-| | Python | Rust |
-|---|---|---|
-| Executables | 3 (68 MB total) | 1 (4.9 MB) |
-| Time to window | ~4400 ms | ~250 ms |
-| Rule hit (no window) | daemon round-trip | 177 ms, process exits |
-| Background process | daemon at startup | none |
-| Listening socket | 127.0.0.1:27384 | none |
-| Autostart entry | yes | none |
+A **single 4.9 MB exe with no runtime dependency** and no background process.
+Reaches a visible window in ~250 ms; a matched rule opens the browser and exits
+in ~177 ms with no window at all.
 
 The UI is a light theme — white cards on a near-white ground, hairline borders,
 one blue accent — using the real Segoe UI so it matches the rest of Windows.
 
-Your existing rules keep working: this reads and writes the same
-`%LOCALAPPDATA%\BrowserPicker\rules.json`, and the glob matcher is verified
-against Python's `fnmatch` semantics (including its case-insensitivity on
-Windows) so saved patterns behave identically.
+Rules are stored in `%LOCALAPPDATA%\BrowserPicker\rules.json`.
 
 ## Usage
 
 ```
-browser_picker.exe <URL>        pick a profile for this link
-browser_picker.exe --manage     rules manager + setup (also the default with no args)
-browser_picker.exe --install    register with Windows, add the Start Menu entry
-browser_picker.exe --uninstall  remove registration and Start Menu entry
+browser_picker.exe <URL>          pick a profile for this link
+browser_picker.exe --manage       rules manager + setup (also the default with no args)
+browser_picker.exe --install      register with Windows, add the Start Menu entry
+browser_picker.exe --uninstall    remove registration and Start Menu entry
+browser_picker.exe --register     silent --install, for installers/scripting
+browser_picker.exe --unregister   silent --uninstall, for installers/scripting
 ```
 
 In the picker: `1`–`9` pick a profile, `Esc` cancels, **right-click a profile**
@@ -118,11 +98,12 @@ Debug builds accept `BP_FORCE_STATUS=default|partial|notdefault|notregistered`
 to exercise the setup-guide states without touching the registry. It is compiled
 out of release builds entirely.
 
-## Still to do for distribution
+## Distribution
 
-1. **Code signing.** Unsigned, SmartScreen warns on every download — bad for a
-   tool that asks to be your default browser. Azure Trusted Signing is the cheap
-   route.
-2. **Installer.** Inno Setup or WiX, per-user so it needs no admin. It should run
-   the equivalent of `--install`, then send the user to `ms-settings:defaultapps`.
-3. **winget manifest.** Near-free once signed.
+Releases are built, signed (Azure Trusted Signing) and published automatically
+by `.github/workflows/release.yml` on any `v*` tag. The installer is built with
+Inno Setup (`installer/setup.iss`): a per-user install (no admin) that calls
+`--register` after copying the exe and registers a proper uninstall entry that
+runs `--unregister` first.
+
+**Still to do:** a winget manifest — near-free now that releases are signed.

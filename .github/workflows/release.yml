@@ -54,32 +54,60 @@ jobs:
           }
           '@ | Set-Content -Path trustedsigning\metadata.json -Encoding utf8
 
-      - name: Sign browser_picker.exe
+      - name: Locate signtool
         shell: pwsh
         run: |
           $signtool = Get-ChildItem -Recurse -Filter "signtool.exe" "C:\Program Files (x86)\Windows Kits\10\bin" |
             Where-Object { $_.FullName -match "\\x64\\" } |
             Select-Object -First 1 -ExpandProperty FullName
           if (-not $signtool) { throw "signtool.exe not found" }
+          "SIGNTOOL=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-          & $signtool sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
+      - name: Sign browser_picker.exe
+        shell: pwsh
+        run: |
+          & $env:SIGNTOOL sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
             /dlib "trustedsigning\extracted\bin\x64\Azure.CodeSigning.Dlib.dll" `
             /dmdf "trustedsigning\metadata.json" `
             "target\release\browser_picker.exe"
-
           if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
 
-      - name: Verify signature
+          & $env:SIGNTOOL verify /pa /v "target\release\browser_picker.exe"
+          if ($LASTEXITCODE -ne 0) { throw "signature verification failed" }
+
+      - name: Build installer
         shell: pwsh
         run: |
-          $signtool = Get-ChildItem -Recurse -Filter "signtool.exe" "C:\Program Files (x86)\Windows Kits\10\bin" |
-            Where-Object { $_.FullName -match "\\x64\\" } |
+          $version = $env:GITHUB_REF_NAME -replace '^v',''
+
+          $iscc = Get-ChildItem -Recurse -Filter "ISCC.exe" "C:\Program Files (x86)\Inno Setup 6" -ErrorAction SilentlyContinue |
             Select-Object -First 1 -ExpandProperty FullName
-          & $signtool verify /pa /v "target\release\browser_picker.exe"
+          if (-not $iscc) {
+            winget install --id JRSoftware.InnoSetup -e --accept-package-agreements --accept-source-agreements
+            $iscc = Get-ChildItem -Recurse -Filter "ISCC.exe" "$env:LOCALAPPDATA\Programs\Inno Setup 6" -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $iscc) { throw "ISCC.exe not found" }
+
+          & $iscc "installer\setup.iss" "/DMyAppVersion=$version"
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
+
+      - name: Sign installer
+        shell: pwsh
+        run: |
+          & $env:SIGNTOOL sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
+            /dlib "trustedsigning\extracted\bin\x64\Azure.CodeSigning.Dlib.dll" `
+            /dmdf "trustedsigning\metadata.json" `
+            "target\installer\BrowserPickerSetup.exe"
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
+
+          & $env:SIGNTOOL verify /pa /v "target\installer\BrowserPickerSetup.exe"
           if ($LASTEXITCODE -ne 0) { throw "signature verification failed" }
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/browser_picker.exe
+          files: |
+            target/release/browser_picker.exe
+            target/installer/BrowserPickerSetup.exe
           generate_release_notes: true
