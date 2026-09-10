@@ -3,7 +3,11 @@
 ; Per-user, no admin required. Installs the single exe, then calls its own
 ; --register flag to do the Windows browser registration and Start Menu
 ; shortcut (so there is exactly one shortcut, not one from Inno and one from
-; the app). Uninstall runs --unregister first, then removes the files.
+; the app). On an interactive install, the finished page offers to open
+; Default Apps so the user can actually pick Browser Picker (Windows allows
+; no programmatic way to seize the default) - skipped for silent installs,
+; since Store certification and CI run silently and expect no UI. Uninstall
+; runs --unregister first, then removes the files.
 ;
 ; Build with: iscc installer\setup.iss /DMyAppVersion=1.2.3
 ; MyAppVersion defaults to 0.0.0 for local/dev builds.
@@ -46,6 +50,7 @@ Source: "..\target\release\browser_picker.exe"; DestDir: "{app}"; Flags: ignorev
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--register"; Flags: runhidden; StatusMsg: "Registering Browser Picker with Windows..."
+Filename: "ms-settings:defaultapps?registeredAppUser=Browser%20Picker"; Flags: postinstall skipifsilent shellexec nowait; Description: "Set Browser Picker as your default browser"
 
 [UninstallRun]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--unregister"; Flags: runhidden; RunOnceId: "UnregisterBrowserPicker"
