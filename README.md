@@ -3,11 +3,14 @@
 Click a link, choose which Chrome or Edge profile opens it. Save a rule and that
 site skips the picker from then on.
 
-This is a rewrite of the Python/tkinter version that lives one directory up. It
-is a **single 4.9 MB exe with no runtime dependency** — no Python, no .NET, no
+A **single 4.9 MB exe with no runtime dependency** — no Python, no .NET, no
 background process.
 
-## What changed from the Python version
+This replaced an earlier Python/tkinter implementation, which was removed once
+this version took over as the registered handler. It is still in git history at
+the `Import Python implementation and Rust port` commit if it is ever needed.
+
+## Why it was rewritten
 
 The Python build needed 4.4 seconds to show a window, which is why it shipped
 three executables: a launcher, a resident daemon holding tkinter warm, and the
