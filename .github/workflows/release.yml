@@ -78,6 +78,15 @@ jobs:
             "/dlib `"$repoAbs\trustedsigning\extracted\bin\x64\Azure.CodeSigning.Dlib.dll`" " +
             "/dmdf `"$repoAbs\trustedsigning\metadata.json`" `"{{file}}`""
 
+          # -p wants a clean "publish" folder holding only the app's runtime
+          # files, the same as `dotnet publish` output - not a raw `cargo
+          # build` target dir. target\release also has deps\ (every
+          # dependency's compiled objects) and build\ (build-script output),
+          # and vpk packs everything under -p verbatim: pointing it straight
+          # at target\release shipped a 430+ MB release of pure build cache.
+          New-Item -ItemType Directory -Force -Path target\publish | Out-Null
+          Copy-Item target\release\browser_picker.exe target\publish\ -Force
+
           # Pulls the previous release's packages (if any) so this pack can
           # produce a delta update alongside the full one; the very first
           # Velopack release simply finds nothing to diff against.
@@ -86,7 +95,7 @@ jobs:
           vpk pack `
             -u BrowserPicker `
             -v $version `
-            -p target\release `
+            -p target\publish `
             -e browser_picker.exe `
             -i assets\browser_picker.ico `
             --signTemplate $signTemplate
