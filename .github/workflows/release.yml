@@ -95,9 +95,23 @@ jobs:
       - name: Publish GitHub Release
         shell: pwsh
         run: |
-          vpk upload github --repoUrl "https://github.com/${{ github.repository }}" --publish --token "${{ secrets.GITHUB_TOKEN }}"
+          # Without --tag, vpk derives its own tag from --packVersion (e.g.
+          # "0.1.6", no "v") instead of using the tag that triggered this
+          # workflow - not what we want given every other tag here is "v*".
+          vpk upload github --repoUrl "https://github.com/${{ github.repository }}" --tag "$env:GITHUB_REF_NAME" --publish --token "${{ secrets.GITHUB_TOKEN }}"
           if ($LASTEXITCODE -ne 0) { throw "vpk upload failed with exit code $LASTEXITCODE" }
-          gh release edit "$env:GITHUB_REF_NAME" --generate-notes
+
+          # Best-effort, mirroring what the old softprops/action-gh-release
+          # step used to do. `gh release edit` has no --generate-notes of its
+          # own (that's a `create`-only flag) - fetch notes via the API and
+          # set them explicitly. Not fatal: the release itself is already
+          # published above, so a hiccup here shouldn't fail the whole job.
+          $notes = gh api "repos/${{ github.repository }}/releases/generate-notes" -f tag_name="$env:GITHUB_REF_NAME" --jq .body
+          if ($LASTEXITCODE -eq 0 -and $notes) {
+            Set-Content -Path notes.md -Value $notes -Encoding utf8
+            gh release edit "$env:GITHUB_REF_NAME" --notes-file notes.md
+          }
+          $global:LASTEXITCODE = 0
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
