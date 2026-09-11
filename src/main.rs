@@ -6,10 +6,11 @@
 //!
 //!   browser_picker.exe <URL>       pick a profile for this link
 //!   browser_picker.exe --manage    rules manager and setup (also with no args)
-//!   browser_picker.exe --install   register with Windows, add Start Menu entry
-//!   browser_picker.exe --uninstall
-//!   browser_picker.exe --register    silent equivalent of --install, for installers
-//!   browser_picker.exe --unregister  silent equivalent of --uninstall, for installers
+//!   browser_picker.exe --install   register with Windows (dev/manual use only -
+//!   browser_picker.exe --uninstall  Velopack's install/uninstall hooks call
+//!                                   `install::register`/`unregister` directly)
+//!   browser_picker.exe --register    silent equivalent of --install
+//!   browser_picker.exe --unregister  silent equivalent of --uninstall
 
 #![windows_subsystem = "windows"]
 
@@ -25,8 +26,14 @@ mod settings;
 mod theme;
 mod ui;
 mod unwrap;
+mod update;
 
 fn main() {
+    // First thing, always: Velopack may need to run an install/uninstall/
+    // update hook and exit, or restart us into a newly-applied version,
+    // before any of our own argument handling below ever gets to run.
+    update::run_app_hooks();
+
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     match args.first().map(String::as_str) {

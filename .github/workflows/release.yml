@@ -29,6 +29,12 @@ jobs:
         run: cargo test --release
         shell: pwsh
 
+      - name: Install vpk
+        shell: pwsh
+        run: |
+          dotnet tool install -g vpk
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -63,54 +69,37 @@ jobs:
           if (-not $signtool) { throw "signtool.exe not found" }
           "SIGNTOOL=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Sign browser_picker.exe
-        shell: pwsh
-        run: |
-          & $env:SIGNTOOL sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
-            /dlib "trustedsigning\extracted\bin\x64\Azure.CodeSigning.Dlib.dll" `
-            /dmdf "trustedsigning\metadata.json" `
-            "target\release\browser_picker.exe"
-          if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
-
-          & $env:SIGNTOOL verify /pa /v "target\release\browser_picker.exe"
-          if ($LASTEXITCODE -ne 0) { throw "signature verification failed" }
-
-      - name: Build installer
+      - name: Pack and sign with Velopack
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME -replace '^v',''
+          $repoAbs = (Resolve-Path ".").Path
+          $signTemplate = "$env:SIGNTOOL sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 " +
+            "/dlib `"$repoAbs\trustedsigning\extracted\bin\x64\Azure.CodeSigning.Dlib.dll`" " +
+            "/dmdf `"$repoAbs\trustedsigning\metadata.json`" {{file}}"
 
-          $iscc = Get-ChildItem -Recurse -Filter "ISCC.exe" "C:\Program Files (x86)\Inno Setup 6" -ErrorAction SilentlyContinue |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $iscc) {
-            winget install --id JRSoftware.InnoSetup -e --accept-package-agreements --accept-source-agreements
-            $iscc = Get-ChildItem -Recurse -Filter "ISCC.exe" "$env:LOCALAPPDATA\Programs\Inno Setup 6" -ErrorAction SilentlyContinue |
-              Select-Object -First 1 -ExpandProperty FullName
-          }
-          if (-not $iscc) { throw "ISCC.exe not found" }
+          # Pulls the previous release's packages (if any) so this pack can
+          # produce a delta update alongside the full one; the very first
+          # Velopack release simply finds nothing to diff against.
+          vpk download github --repoUrl "https://github.com/${{ github.repository }}"
 
-          & $iscc "installer\setup.iss" "/DMyAppVersion=$version"
-          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with exit code $LASTEXITCODE" }
-
-      - name: Sign installer
-        shell: pwsh
-        run: |
-          & $env:SIGNTOOL sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
-            /dlib "trustedsigning\extracted\bin\x64\Azure.CodeSigning.Dlib.dll" `
-            /dmdf "trustedsigning\metadata.json" `
-            "target\installer\BrowserPickerSetup.exe"
-          if ($LASTEXITCODE -ne 0) { throw "signtool failed with exit code $LASTEXITCODE" }
-
-          & $env:SIGNTOOL verify /pa /v "target\installer\BrowserPickerSetup.exe"
-          if ($LASTEXITCODE -ne 0) { throw "signature verification failed" }
+          vpk pack `
+            -u BrowserPicker `
+            -v $version `
+            -p target\release `
+            -e browser_picker.exe `
+            -i assets\browser_picker.ico `
+            --signTemplate $signTemplate
+          if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit code $LASTEXITCODE" }
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            target/release/browser_picker.exe
-            target/installer/BrowserPickerSetup.exe
-          generate_release_notes: true
+        shell: pwsh
+        run: |
+          vpk upload github --repoUrl "https://github.com/${{ github.repository }}" --publish --token "${{ secrets.GITHUB_TOKEN }}"
+          if ($LASTEXITCODE -ne 0) { throw "vpk upload failed with exit code $LASTEXITCODE" }
+          gh release edit "$env:GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload installer to blob storage
         shell: pwsh
@@ -120,11 +109,13 @@ jobs:
           # storage serves the file directly with no redirect, so the signed
           # installer is mirrored here purely to satisfy that requirement.
           $version = $env:GITHUB_REF_NAME -replace '^v',''
+          $setup = Get-ChildItem "Releases" -Filter "*Setup.exe" | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $setup) { throw "no *Setup.exe found under Releases\" }
           az storage blob upload `
             --account-name leathamdl `
             --container-name browser-picker `
             --name "$version/BrowserPickerSetup.exe" `
-            --file "target\installer\BrowserPickerSetup.exe" `
+            --file "$setup" `
             --auth-mode login `
             --overwrite true
           if ($LASTEXITCODE -ne 0) { throw "blob upload failed with exit code $LASTEXITCODE" }

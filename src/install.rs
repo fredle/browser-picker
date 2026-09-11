@@ -1,22 +1,21 @@
-//! Registering as a Windows browser, and the Start Menu entry.
+//! Registering as a Windows browser.
 //!
 //! Everything is per-user (HKCU), so no admin rights are needed. There is no
-//! daemon and no autostart entry - Windows launches the exe directly.
+//! daemon and no autostart entry - Windows launches the exe directly. The
+//! Start Menu shortcut is Velopack's, not ours (see `src/update.rs`): it
+//! already points at the exe with no arguments, which defaults to the rules
+//! manager, and Velopack keeps it pointed at the current version across
+//! updates - a shortcut we made ourselves would go stale after the first
+//! self-update.
 
 use crate::default_browser::{APP_NAME, DISPLAY_NAME, PROG_ID};
 use std::path::PathBuf;
-use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, IPersistFile,
-};
-use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 use windows::Win32::UI::WindowsAndMessaging::{
     MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MessageBoxW,
 };
-use windows::core::{HSTRING, Interface};
+use windows::core::HSTRING;
 use winreg::RegKey;
 use winreg::enums::*;
-
-const SHORTCUT_NAME: &str = "Browser Picker.lnk";
 
 fn exe_path() -> PathBuf {
     std::env::current_exe().unwrap_or_default()
@@ -73,41 +72,7 @@ pub fn unregister() -> std::io::Result<()> {
     if let Ok(k) = hkcu.open_subkey_with_flags(r"Software\RegisteredApplications", KEY_SET_VALUE) {
         let _ = k.delete_value(APP_NAME);
     }
-    let _ = std::fs::remove_file(shortcut_path());
     Ok(())
-}
-
-fn shortcut_path() -> PathBuf {
-    PathBuf::from(std::env::var("APPDATA").unwrap_or_default())
-        .join(r"Microsoft\Windows\Start Menu\Programs")
-        .join(SHORTCUT_NAME)
-}
-
-pub fn create_start_menu_shortcut() -> windows::core::Result<PathBuf> {
-    let lnk = shortcut_path();
-    if let Some(parent) = lnk.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let exe = exe_path();
-    let workdir = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-
-    unsafe {
-        // Already-initialised is not an error for our purposes.
-        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-
-        let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
-        link.SetPath(&HSTRING::from(exe.to_string_lossy().as_ref()))?;
-        link.SetArguments(&HSTRING::from("--manage"))?;
-        link.SetDescription(&HSTRING::from(
-            "Manage which browser profile opens which sites",
-        ))?;
-        link.SetWorkingDirectory(&HSTRING::from(workdir.to_string_lossy().as_ref()))?;
-
-        let file: IPersistFile = link.cast()?;
-        file.Save(&HSTRING::from(lnk.to_string_lossy().as_ref()), true)?;
-    }
-
-    Ok(lnk)
 }
 
 fn message(text: &str, error: bool) {
@@ -126,21 +91,16 @@ fn message(text: &str, error: bool) {
     }
 }
 
-/// Silent registration for unattended use (installers, scripting): no dialog,
-/// no Settings page. Exit code reports success.
+/// Silent registration for unattended use (scripting, Velopack's own install
+/// hook): no dialog, no Settings page. Exit code reports success.
 pub fn run_register_quiet() -> i32 {
-    if let Err(e) = register() {
-        eprintln!("register failed: {e}");
-        return 1;
-    }
-    match create_start_menu_shortcut() {
-        Ok(p) => println!("registered; shortcut: {}", p.display()),
+    match register() {
+        Ok(()) => 0,
         Err(e) => {
-            println!("registered; shortcut failed: {e}");
-            return 2;
+            eprintln!("register failed: {e}");
+            1
         }
     }
-    0
 }
 
 pub fn run_install() {
@@ -148,23 +108,17 @@ pub fn run_install() {
         message(&format!("Could not register with Windows:\n{e}"), true);
         return;
     }
-    let shortcut = match create_start_menu_shortcut() {
-        Ok(p) => format!("Start Menu shortcut created:\n{}", p.display()),
-        Err(e) => format!("Start Menu shortcut could not be created:\n{e}"),
-    };
     message(
-        &format!(
-            "Browser Picker is registered with Windows.\n\n{shortcut}\n\n\
-             Last step: Windows only lets you choose a default browser by hand. \
-             Click OK to open Default apps, then set Browser Picker for HTTP and HTTPS."
-        ),
+        "Browser Picker is registered with Windows.\n\n\
+         Last step: Windows only lets you choose a default browser by hand. \
+         Click OK to open Default apps, then set Browser Picker for HTTP and HTTPS.",
         false,
     );
     crate::default_browser::open_default_apps_settings();
 }
 
-/// Silent unregistration for unattended use (uninstallers, scripting): no
-/// dialog, no Settings page. Exit code reports success.
+/// Silent unregistration for unattended use (scripting, Velopack's own
+/// uninstall hook): no dialog, no Settings page. Exit code reports success.
 pub fn run_unregister_quiet() -> i32 {
     match unregister() {
         Ok(()) => 0,
@@ -178,7 +132,7 @@ pub fn run_unregister_quiet() -> i32 {
 pub fn run_uninstall() {
     let _ = unregister();
     message(
-        "Browser Picker has been unregistered and its Start Menu entry removed.\n\n\
+        "Browser Picker has been unregistered.\n\n\
          Remember to pick a different default browser in Settings > Apps > Default apps.",
         false,
     );

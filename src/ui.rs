@@ -97,6 +97,14 @@ pub struct App {
     /// and stays `None` if the link isn't wrapped or resolution fails.
     resolved_domain: Option<String>,
     resolve_rx: Option<std::sync::mpsc::Receiver<Option<String>>>,
+
+    /// Checked once per window, on first reaching the rules screen.
+    update_checked: bool,
+    update_check_rx: Option<std::sync::mpsc::Receiver<Option<velopack::UpdateInfo>>>,
+    update_available: Option<velopack::UpdateInfo>,
+    update_applying: bool,
+    update_apply_rx: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
+    update_apply_error: Option<String>,
 }
 
 impl App {
@@ -130,7 +138,7 @@ impl App {
             None
         };
 
-        Self {
+        let mut app = Self {
             screen,
             url,
             profiles,
@@ -149,7 +157,80 @@ impl App {
             settings,
             resolved_domain: None,
             resolve_rx,
+            update_checked: false,
+            update_check_rx: None,
+            update_available: None,
+            update_applying: false,
+            update_apply_rx: None,
+            update_apply_error: None,
+        };
+        if app.screen == Screen::Rules {
+            app.start_update_check();
         }
+        app
+    }
+
+    /// Kick off a background update check the first time the rules screen is
+    /// reached (from either startup or `Action::Manage`). Silent: an offline
+    /// check, or a dev build with nothing for `UpdateManager` to find, just
+    /// leaves `update_available` as `None`.
+    fn start_update_check(&mut self) {
+        if self.update_checked {
+            return;
+        }
+        self.update_checked = true;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::update::check());
+        });
+        self.update_check_rx = Some(rx);
+    }
+
+    fn poll_update(&mut self, ctx: &egui::Context) {
+        if let Some(rx) = &self.update_check_rx {
+            match rx.try_recv() {
+                Ok(info) => {
+                    self.update_available = info;
+                    self.update_check_rx = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(Duration::from_millis(300));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.update_check_rx = None;
+                }
+            }
+        }
+        if let Some(rx) = &self.update_apply_rx {
+            match rx.try_recv() {
+                Ok(Ok(())) => {} // process is about to be replaced
+                Ok(Err(e)) => {
+                    self.update_applying = false;
+                    self.update_apply_error = Some(e);
+                    self.update_apply_rx = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(Duration::from_millis(300));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.update_applying = false;
+                    self.update_apply_rx = None;
+                }
+            }
+        }
+    }
+
+    fn apply_update(&mut self) {
+        let Some(info) = self.update_available.clone() else {
+            return;
+        };
+        self.update_applying = true;
+        self.update_apply_error = None;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::update::install_and_restart(&info));
+        });
+        self.update_apply_rx = Some(rx);
     }
 
     /// The domain rules should match and the context menu should offer,
@@ -725,9 +806,7 @@ impl App {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     if ui.button("Register now").clicked() {
-                        if install::register().is_ok() {
-                            let _ = install::create_start_menu_shortcut();
-                        }
+                        let _ = install::register();
                         self.status = db::status();
                         self.status_checked = Instant::now();
                     }
@@ -758,6 +837,57 @@ impl App {
         });
     }
 
+    fn update_banner(&mut self, ui: &mut egui::Ui) {
+        let frame = egui::Frame {
+            fill: theme::BG_CARD,
+            inner_margin: egui::Margin::same(12),
+            corner_radius: egui::CornerRadius::same(theme::RADIUS_CARD),
+            stroke: egui::Stroke::new(1.0, theme::ACCENT),
+            ..Default::default()
+        };
+        let mut apply_clicked = false;
+        frame.show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            if let Some(err) = &self.update_apply_error {
+                ui.label(
+                    egui::RichText::new(format!("Couldn't install the update: {err}"))
+                        .color(theme::BAD)
+                        .font(self.font(11.0, false)),
+                );
+                return;
+            }
+            let Some(info) = &self.update_available else {
+                return;
+            };
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Browser Picker {} is available",
+                        info.TargetFullRelease.Version
+                    ))
+                    .color(theme::FG)
+                    .font(self.font(11.5, true)),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let label = if self.update_applying {
+                        "Updating\u{2026}"
+                    } else {
+                        "Update & restart"
+                    };
+                    if ui
+                        .add_enabled(!self.update_applying, egui::Button::new(label))
+                        .clicked()
+                    {
+                        apply_clicked = true;
+                    }
+                });
+            });
+        });
+        if apply_clicked {
+            self.apply_update();
+        }
+    }
+
     fn rules_screen(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_space(12.0);
         ui.label(
@@ -778,6 +908,11 @@ impl App {
         ui.add_space(10.0);
         self.setup_banner(ui);
         ui.add_space(10.0);
+
+        if self.update_available.is_some() || self.update_apply_error.is_some() {
+            self.update_banner(ui);
+            ui.add_space(10.0);
+        }
 
         let mut unwrap_enabled = self.settings.unwrap_wrapped_links;
         if ui
@@ -1033,6 +1168,7 @@ impl eframe::App for App {
         self.load_textures(ctx);
         self.refresh_status(ctx);
         self.poll_resolve(ctx);
+        self.poll_update(ctx);
 
         if let Some((w, h)) = self.resize_to.take() {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
@@ -1113,6 +1249,7 @@ impl eframe::App for App {
                 self.form_pattern = self.effective_domain();
                 self.rules = rules::load();
                 self.go_to(Screen::Rules);
+                self.start_update_check();
             }
             Action::None => {}
         }
