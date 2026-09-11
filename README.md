@@ -34,6 +34,13 @@ handled by another application and its modifier state never reaches us. The key
 is `bypass::KEY_NAME` / `bypass::held()` in `src/bypass.rs` if you want a
 different one.
 
+**Protected links (Mimecast, SafeLinks, Proofpoint, ...):** off by default, a
+checkbox in *Manage defaults…* resolves these to the real destination before
+showing the picker, so both the display and any rule you save are keyed off
+the actual site rather than the wrapper. It's opt-in because resolving one
+sends a request to the wrapper's server, which registers as a click against
+the original link.
+
 **Editing a rule:** *Edit* on any row loads it into the form; *Save* replaces it
 **in place**. That matters because rules match first-to-last, so the delete-and-
 retype it replaces would silently promote the rule to top priority. Editing also
@@ -93,6 +100,8 @@ the version strings.
 | `monitor.rs` | centring on the monitor under the cursor, DPI-aware |
 | `theme.rs` | light palette: neutral surfaces, hairline borders, blue accent |
 | `bypass.rs` | the hold-to-override modifier |
+| `unwrap.rs` | resolves known safe-link wrappers (Mimecast, SafeLinks, ...) to their real destination |
+| `settings.rs` | settings.json load/save (currently just the unwrap opt-in) |
 
 Debug builds accept `BP_FORCE_STATUS=default|partial|notdefault|notregistered`
 to exercise the setup-guide states without touching the registry. It is compiled

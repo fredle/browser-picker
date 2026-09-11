@@ -21,8 +21,10 @@ mod launch;
 mod monitor;
 mod profiles;
 mod rules;
+mod settings;
 mod theme;
 mod ui;
+mod unwrap;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

@@ -90,6 +90,13 @@ pub struct App {
     default_name: Option<String>,
 
     resize_to: Option<(f32, f32)>,
+
+    settings: crate::settings::Settings,
+    /// Real destination of a wrapped link (Mimecast, SafeLinks, ...), filled
+    /// in asynchronously once `resolve_rx` reports back. `None` until then,
+    /// and stays `None` if the link isn't wrapped or resolution fails.
+    resolved_domain: Option<String>,
+    resolve_rx: Option<std::sync::mpsc::Receiver<Option<String>>>,
 }
 
 impl App {
@@ -104,6 +111,24 @@ impl App {
 
         let seed_pattern = url.as_deref().map(rules::domain_of).unwrap_or_default();
         let n = profiles.len();
+        let settings = crate::settings::load();
+
+        // Kick off resolution in the background so the window still appears
+        // immediately; the picker just updates itself once (if) it lands.
+        let resolve_rx = if screen == Screen::Picker && settings.unwrap_wrapped_links {
+            url.as_deref()
+                .filter(|u| crate::unwrap::is_wrapped_host(&rules::domain_of(u)))
+                .map(|u| {
+                    let u = u.to_string();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    std::thread::spawn(move || {
+                        let _ = tx.send(crate::unwrap::resolve(&u));
+                    });
+                    rx
+                })
+        } else {
+            None
+        };
 
         Self {
             screen,
@@ -121,6 +146,36 @@ impl App {
             status_checked: Instant::now(),
             default_name: db::current_default_name(),
             resize_to: None,
+            settings,
+            resolved_domain: None,
+            resolve_rx,
+        }
+    }
+
+    /// The domain rules should match and the context menu should offer,
+    /// preferring a resolved wrapper destination over the wrapper host.
+    fn effective_domain(&self) -> String {
+        self.resolved_domain
+            .clone()
+            .unwrap_or_else(|| rules::domain_of(self.url.as_deref().unwrap_or("")))
+    }
+
+    /// Poll the background resolver, if one is running, without blocking.
+    fn poll_resolve(&mut self, ctx: &egui::Context) {
+        let Some(rx) = &self.resolve_rx else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(result) => {
+                self.resolved_domain = result.as_deref().map(rules::domain_of);
+                self.resolve_rx = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(150));
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.resolve_rx = None;
+            }
         }
     }
 
@@ -412,11 +467,11 @@ impl App {
     fn picker(&mut self, ui: &mut egui::Ui) -> Action {
         let mut action = Action::None;
         let url = self.url.clone().unwrap_or_default();
-        let domain = rules::domain_of(&url);
+        let domain = self.effective_domain();
         let domain_rule = rules::find_domain_rule(&domain, &self.rules);
 
         // Header
-        let (rect, _) = ui.allocate_exact_size(
+        let (rect, header_resp) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), HEADER_H),
             egui::Sense::hover(),
         );
@@ -428,18 +483,36 @@ impl App {
             self.font(15.0, true),
             theme::FG,
         );
-        let shown: String = if url.chars().count() <= 60 {
-            url.clone()
+        // A resolved wrapper destination replaces the raw (opaque, wrapper-
+        // hosted) URL in the subtitle - the wrapped URL is still what gets
+        // launched, and stays available as a hover tooltip so nothing is
+        // hidden, just made readable.
+        let (subtitle, subtitle_color, tooltip) = if let Some(resolved) = &self.resolved_domain {
+            (format!("Opens: {resolved}"), theme::FG, Some(url.clone()))
+        } else if self.resolve_rx.is_some() {
+            (
+                "Resolving protected link\u{2026}".to_string(),
+                theme::FG_DIM,
+                None,
+            )
         } else {
-            format!("{}\u{2026}", url.chars().take(57).collect::<String>())
+            let shown = if url.chars().count() <= 60 {
+                url.clone()
+            } else {
+                format!("{}\u{2026}", url.chars().take(57).collect::<String>())
+            };
+            (shown, theme::FG_DIM, None)
         };
         painter.text(
             egui::pos2(rect.left() + PAD, rect.top() + 40.0),
             egui::Align2::LEFT_CENTER,
-            shown,
+            subtitle,
             self.font(11.0, false),
-            theme::FG_DIM,
+            subtitle_color,
         );
+        if let Some(tooltip) = tooltip {
+            header_resp.on_hover_text(tooltip);
+        }
         separator(ui);
 
         // Not-the-default warning, since links won't reach us at all
@@ -706,6 +779,26 @@ impl App {
         self.setup_banner(ui);
         ui.add_space(10.0);
 
+        let mut unwrap_enabled = self.settings.unwrap_wrapped_links;
+        if ui
+            .checkbox(
+                &mut unwrap_enabled,
+                egui::RichText::new("Resolve protected links (Mimecast, SafeLinks, Proofpoint\u{2026}) to their real destination")
+                    .font(self.font(11.0, false))
+                    .color(theme::FG),
+            )
+            .on_hover_text(
+                "Shows and matches rules against the real site behind a wrapped link.\n\
+                 Sends a request to the sender's link-protection service to resolve it,\n\
+                 which registers as a click against the original email link.",
+            )
+            .changed()
+        {
+            self.settings.unwrap_wrapped_links = unwrap_enabled;
+            crate::settings::save(&self.settings);
+        }
+        ui.add_space(10.0);
+
         // Existing rules
         let mut remove: Option<(String, String)> = None;
         let mut edit_request: Option<Rule> = None;
@@ -939,6 +1032,7 @@ impl eframe::App for App {
         let ctx = &ctx;
         self.load_textures(ctx);
         self.refresh_status(ctx);
+        self.poll_resolve(ctx);
 
         if let Some((w, h)) = self.resize_to.take() {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
@@ -1006,18 +1100,17 @@ impl eframe::App for App {
         match action {
             Action::Select(idx) => self.select(idx, ctx),
             Action::SetDefault(idx) => {
-                let url = self.url.clone().unwrap_or_default();
-                let domain = rules::domain_of(&url);
+                let domain = self.effective_domain();
                 let profile = self.profiles[idx].clone();
                 self.rules = rules::add(&domain, "domain", &profile);
                 self.select(idx, ctx);
             }
             Action::RemoveDefault => {
-                let domain = rules::domain_of(self.url.as_deref().unwrap_or(""));
+                let domain = self.effective_domain();
                 self.rules = rules::remove(&domain, "domain");
             }
             Action::Manage => {
-                self.form_pattern = rules::domain_of(self.url.as_deref().unwrap_or(""));
+                self.form_pattern = self.effective_domain();
                 self.rules = rules::load();
                 self.go_to(Screen::Rules);
             }
