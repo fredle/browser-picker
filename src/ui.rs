@@ -105,6 +105,7 @@ pub struct App {
     update_applying: bool,
     update_apply_rx: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
     update_apply_error: Option<String>,
+    version: String,
 }
 
 impl App {
@@ -163,6 +164,7 @@ impl App {
             update_applying: false,
             update_apply_rx: None,
             update_apply_error: None,
+            version: crate::update::current_version(),
         };
         if app.screen == Screen::Rules {
             app.start_update_check();
@@ -1153,10 +1155,17 @@ impl App {
         }
 
         ui.add_space(10.0);
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Close").clicked() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(format!("v{}", self.version))
+                    .color(theme::FG_DIM)
+                    .font(self.font(9.0, false)),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Close").clicked() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            });
         });
     }
 }

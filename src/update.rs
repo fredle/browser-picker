@@ -36,6 +36,16 @@ pub fn run_app_hooks() {
         .run();
 }
 
+/// The running version, for display. Reads Velopack's local install manifest
+/// when there is one (no network call); falls back to the version baked in
+/// at compile time for a `cargo run` dev build, which Velopack doesn't know
+/// about.
+pub fn current_version() -> String {
+    manager()
+        .map(|um| um.get_current_version_as_string())
+        .unwrap_or_else(|_| format!("{} (dev)", env!("CARGO_PKG_VERSION")))
+}
+
 fn manager() -> Result<UpdateManager, String> {
     let source = GithubSource::new(REPO_URL, None, false);
     UpdateManager::new(source, None, None).map_err(|e| e.to_string())
