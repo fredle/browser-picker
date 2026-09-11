@@ -74,9 +74,9 @@ jobs:
         run: |
           $version = $env:GITHUB_REF_NAME -replace '^v',''
           $repoAbs = (Resolve-Path ".").Path
-          $signTemplate = "$env:SIGNTOOL sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 " +
+          $signTemplate = "`"$env:SIGNTOOL`" sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 " +
             "/dlib `"$repoAbs\trustedsigning\extracted\bin\x64\Azure.CodeSigning.Dlib.dll`" " +
-            "/dmdf `"$repoAbs\trustedsigning\metadata.json`" {{file}}"
+            "/dmdf `"$repoAbs\trustedsigning\metadata.json`" `"{{file}}`""
 
           # Pulls the previous release's packages (if any) so this pack can
           # produce a delta update alongside the full one; the very first
