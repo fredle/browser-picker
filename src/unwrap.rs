@@ -1,5 +1,5 @@
 //! Best-effort resolution of known email "safe link" wrappers (Mimecast,
-//! Microsoft SafeLinks, Proofpoint, Barracuda...) to the real destination.
+//! Microsoft SafeLinks, Proofpoint, Barracuda, Symantec) to the real destination.
 //!
 //! Opt-in (see `crate::settings`) and scoped to a fixed allowlist: this never
 //! makes a network request for an ordinary link, only for one that is already
