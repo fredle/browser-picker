@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+
+PackageIdentifier: fredle.BrowserPicker
+PackageVersion: 0.1.8
+InstallerType: exe
+Scope: user
+InstallModes:
+- interactive
+- silent
+InstallerSwitches:
+  Silent: --silent
+  SilentWithProgress: --silent
+# The app updates itself in place (Velopack), so a winget upgrade is an
+# ordinary reinstall over the top.
+UpgradeBehavior: install
+ProductCode: BrowserPicker
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/fredle/browser-picker/releases/download/v0.1.8/BrowserPicker-win-Setup.exe
+  InstallerSha256: 0C68E3600BF648350935688EFFA23A40A32EC795CC128F87783E2ED1F58F661F
+ManifestType: installer
+ManifestVersion: 1.10.0

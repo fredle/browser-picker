@@ -1,0 +1,40 @@
+name: Submit to winget (first time)
+
+# One-off: submits the checked-in manifest under winget/manifests/ as a new
+# package to microsoft/winget-pkgs. After Microsoft merges it, every v* tag
+# submits updates automatically (the last step of release.yml), and this
+# workflow is only needed again to resubmit by hand.
+#
+# Needs a WINGET_TOKEN repository secret: a classic personal access token
+# with public_repo scope. wingetcreate forks winget-pkgs under that token's
+# account and opens the pull request from there.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manifest version folder to submit"
+        required: true
+        default: "0.1.8"
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Submit manifest
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          MANIFEST_DIR: winget/manifests/f/fredle/BrowserPicker/${{ inputs.version }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { throw "WINGET_TOKEN secret is not set" }
+          if (-not (Test-Path $env:MANIFEST_DIR)) { throw "no manifest at $env:MANIFEST_DIR" }
+          Invoke-WebRequest -Uri "https://aka.ms/wingetcreate/latest" -OutFile wingetcreate.exe
+          .\wingetcreate.exe submit $env:MANIFEST_DIR --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { throw "wingetcreate submit failed with exit code $LASTEXITCODE" }

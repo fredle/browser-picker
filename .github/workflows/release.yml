@@ -143,3 +143,22 @@ jobs:
             --overwrite true
           if ($LASTEXITCODE -ne 0) { throw "blob upload failed with exit code $LASTEXITCODE" }
           "Package URL: https://leathamdl.blob.core.windows.net/browser-picker/$version/BrowserPickerSetup.exe" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Submit update to winget
+        # Updates the existing fredle.BrowserPicker package in
+        # microsoft/winget-pkgs with this release's installer. Only works once
+        # the package has been accepted there (see winget-submit.yml for the
+        # first submission), and needs a WINGET_TOKEN secret: a classic PAT
+        # with public_repo scope, which wingetcreate uses to fork winget-pkgs
+        # and open the PR. Not fatal - the release itself is already out.
+        continue-on-error: true
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { "WINGET_TOKEN not set - skipping winget submission"; exit 0 }
+          $version = $env:GITHUB_REF_NAME -replace '^v',''
+          $url = "https://github.com/${{ github.repository }}/releases/download/$env:GITHUB_REF_NAME/BrowserPicker-win-Setup.exe"
+          Invoke-WebRequest -Uri "https://aka.ms/wingetcreate/latest" -OutFile wingetcreate.exe
+          .\wingetcreate.exe update fredle.BrowserPicker --version $version --urls $url --submit --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { throw "wingetcreate update failed with exit code $LASTEXITCODE" }

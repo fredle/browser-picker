@@ -135,4 +135,11 @@ users need to grab the new installer once by hand.
 truth - edit there, then copy into Partner Center). What the app does
 and doesn't send over the network is in `PRIVACY.md`, which the listing links to.
 
-**Still to do:** a winget manifest — near-free now that releases are signed.
+**winget:** package `fredle.BrowserPicker` (once accepted, `winget install fredle.BrowserPicker`).
+The first submission is the checked-in manifest under `winget/manifests/`, sent
+by running the *Submit to winget (first time)* workflow by hand. Once Microsoft
+merges it, the last step of `release.yml` submits each new `v*` release
+automatically with `wingetcreate update`. Both need a `WINGET_TOKEN` repository
+secret: a classic personal access token with `public_repo` scope (wingetcreate
+forks `microsoft/winget-pkgs` under that account and opens the PR from it).
+Without the secret the release step skips itself.

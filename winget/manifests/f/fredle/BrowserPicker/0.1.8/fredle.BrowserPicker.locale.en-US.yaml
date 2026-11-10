@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+
+PackageIdentifier: fredle.BrowserPicker
+PackageVersion: 0.1.8
+PackageLocale: en-US
+Publisher: fredle
+PublisherUrl: https://github.com/fredle
+PublisherSupportUrl: https://github.com/fredle/browser-picker/issues
+PrivacyUrl: https://github.com/fredle/browser-picker/blob/main/PRIVACY.md
+PackageName: Browser Picker
+PackageUrl: https://github.com/fredle/browser-picker
+License: Freeware
+ShortDescription: Choose which Chrome or Edge profile opens each link you click, or save a rule so a site always opens in the same profile.
+Description: |-
+  Set Browser Picker as your default browser and every link you click in Outlook, Teams, Slack or any other app shows a small picker with your Chrome and Edge profiles, each with its real name and photo. Click one, or press its number, and the link opens there.
+
+  Right-click a profile to make it the default for that site; from then on links to that site open straight in the right profile with no window at all. Rules support wildcards, and holding Shift while clicking a link bypasses them.
+
+  Optionally resolves links rewritten by Mimecast, Microsoft Defender SafeLinks, Proofpoint, Barracuda and Symantec to their real destination before matching rules.
+
+  A single small program with no background process. Installs per user without administrator rights and updates itself.
+Moniker: browser-picker
+Tags:
+- browser
+- browser-chooser
+- browser-picker
+- browser-switcher
+- chrome
+- default-browser
+- edge
+- profiles
+- safelinks
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0
