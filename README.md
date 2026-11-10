@@ -132,8 +132,7 @@ tagged v0.1.4 and earlier) won't self-update into the new layout - those
 users need to grab the new installer once by hand.
 
 **Microsoft Store:** the listing text lives in `store/listing.md` (source of
-truth - edit there, then copy into Partner Center; `store/partner-center-prompt.md`
-is a ready-made brief for a browser agent to do the copying). What the app does
+truth - edit there, then copy into Partner Center). What the app does
 and doesn't send over the network is in `PRIVACY.md`, which the listing links to.
 
 **Still to do:** a winget manifest — near-free now that releases are signed.

@@ -1,7 +1,7 @@
 # Microsoft Store listing
 
 Source of truth for the Store listing text. Edit here first, then copy into
-Partner Center (or hand `partner-center-prompt.md` to a browser agent). Every
+Partner Center. Every
 claim below should stay true of the shipped build - in particular the privacy
 paragraph must keep matching `PRIVACY.md`.
 
