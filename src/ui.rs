@@ -45,6 +45,25 @@ fn window_size(screen: Screen, n: usize) -> (f32, f32) {
     }
 }
 
+/// The window's title-bar and taskbar icon. eframe doesn't pick up the icon
+/// `build.rs` embeds in the exe: with none set here it substitutes its own
+/// egui logo. The ICO decoder takes the largest entry and Windows scales it
+/// down for each place the icon appears.
+fn app_icon() -> Option<egui::IconData> {
+    let img = image::load_from_memory_with_format(
+        include_bytes!("../assets/browser_picker.ico"),
+        image::ImageFormat::Ico,
+    )
+    .ok()?
+    .into_rgba8();
+    let (width, height) = img.dimensions();
+    Some(egui::IconData {
+        rgba: img.into_raw(),
+        width,
+        height,
+    })
+}
+
 pub fn run(screen: Screen, url: Option<String>) -> eframe::Result<()> {
     let profiles = crate::profiles::discover();
     let (w, h) = window_size(screen, profiles.len());
@@ -54,6 +73,9 @@ pub fn run(screen: Screen, url: Option<String>) -> eframe::Result<()> {
         .with_inner_size([w, h])
         .with_resizable(false)
         .with_always_on_top();
+    if let Some(icon) = app_icon() {
+        viewport = viewport.with_icon(icon);
+    }
     if let Some(pos) = monitor::centered_pos(w, h) {
         viewport = viewport.with_position(pos);
     }
